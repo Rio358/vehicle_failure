@@ -25,6 +25,9 @@ local healthPetrolTankDelta = 0.0
 local healthPetrolTankDeltaScaled = 0.0
 local tireBurstLuckyNumber
 local repairCost = 0
+local Wait = Wait
+local stalled = false
+local oldBodyDamage = 0
 
 math.randomseed(GetGameTimer());
 
@@ -285,4 +288,52 @@ Citizen.CreateThread(function()
 			pedInSameVehicleLast = false
 		end
 	end
+end)
+
+CreateThread(function()
+    while true do
+        Wait(50)
+        local ped = PlayerPedId()
+        local vehicle = GetVehiclePedIsIn(ped, false)
+        if isPedDrivingAVehicle() and DoesEntityExist(vehicle) then 
+            local currentDamage = GetVehicleBodyHealth(vehicle) 
+            if currentDamage ~= oldBodyDamage then
+				local speed = GetEntitySpeed(vehicle) * 2.236963
+                if not stalled and (currentDamage < oldBodyDamage) and ((oldBodyDamage - currentDamage) >= cfg.StallDamageRequired) then 
+                    if(math.random(1,100) < cfg.StallChance) then 
+                        stalled = true
+						SetVehicleEngineOn(vehicle,false,true,true)
+						ApplyDamageToPed(ped,math.random(1,15),false)
+						Wait(50)
+                    end 
+                end 
+                oldBodyDamage = currentDamage
+            end 
+        else 
+            oldBodyDamage = 0
+        end 
+        if stalled and isPedDrivingAVehicle() then
+			Wait(5)
+            -- what happens when we're stalled?
+			SetVehicleEngineOn(vehicle,false,true,true)
+			SetVehicleUndriveable(vehicle, true)
+			SetVehicleAudioBodyDamageFactor(vehicle, 0.3)
+            exports.mythic_notify:SendAlert('error','Your vehicle has stalled',2500)
+            local unstall = exports["skillbar"]:taskBar(1500,math.random(2,5)) -- replace with a skill check thing of your choosing
+            if unstall ~= 100 or not isPedDrivingAVehicle() then
+				stalled = true
+                Wait(math.random(1500,5000))
+				SetVehicleEngineOn(vehicle,false,true,true)
+			end
+			stalled = false
+			if GetPedInVehicleSeat(vehicle, -1) == ped then
+				SetVehicleUndriveable(vehicle, false)
+				SetVehicleEngineOn(vehicle,true,true,true)
+				if GetVehicleCurrentGear(vehicle) ~= 1 then
+					SetVehicleClutch(vehicle, 1)
+				end
+				exports.mythic_notify:SendAlert('success','You managed to start your vehicle',2500)
+			end
+        end 
+    end 
 end)
